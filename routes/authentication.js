@@ -4,6 +4,30 @@ const router = new Router();
 const User = require('./../models/user');
 const bcryptjs = require('bcryptjs');
 
+const dotenv = require('dotenv');
+dotenv.config();
+
+const nodemailer = require('nodemailer');
+
+const transporter = nodemailer.createTransport({
+  service: 'Gmail',
+  auth: {
+    user: process.env.NODEMAILER_EMAIL,
+    pass: process.env.NODEMAILER_PASSWORD
+  }
+});
+
+
+const generateId = length => {
+  const characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let token = '';
+  for (let i = 0; i < length; i++) {
+    token += characters[Math.floor(Math.random() * characters.length)];
+  }
+  return token;
+};
+
+
 router.get('/', (req, res, next) => {
   res.render('index');
 });
@@ -20,17 +44,35 @@ router.post('/sign-up', (req, res, next) => {
       return User.create({
         name,
         email,
-        passwordHash: hash
+        passwordHash: hash,
+        confirmationCode: generateId(20)
       });
     })
     .then(user => {
+      console.log(user)
       req.session.user = user._id;
-      res.redirect('/');
-    })
+      return transporter
+      .sendMail({
+        from: `Demo App <${process.env.NODEMAILER_EMAIL}>`,
+        to: user.email,
+        html: `<a href="http://localhost:3000/auth/confirm/${user.confirmationCode}">Confirm this email</a>`
+      })
+      .then(result => {
+        console.log(result, 'this was successful')
+      })
+      .catch(error => console.log(error));
+    })  
+    .then(user => res.redirect('/'))
     .catch(error => {
       next(error);
     });
 });
+
+router.get('/auth/confirm/:confirmationCode', (req, res) =>{
+  const confirmationCode = req.params.confirmationCode
+  console.log(confirmationCode)
+  res.render('index');
+})
 
 router.get('/sign-in', (req, res, next) => {
   res.render('sign-in');
@@ -71,5 +113,7 @@ const routeGuard = require('./../middleware/route-guard');
 router.get('/private', routeGuard, (req, res, next) => {
   res.render('private');
 });
+
+
 
 module.exports = router;
